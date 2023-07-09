@@ -3,7 +3,7 @@ Preprocess sites data.
 
 Ed Oughton
 
-February 2022
+July 2023
 
 """
 import sys
@@ -47,11 +47,11 @@ def run_preprocessing(country):
     print('Working on create_national_sites_shp')
     create_national_sites_shp(iso3)
 
-    regions_df = get_regions(country, regional_level)
-    regions_df = regions_df.to_dict('records')
+    regions = get_regions(country, regional_level)
+    regions = regions.to_dict('records')
 
     print('Working on regional disaggregation')
-    for region in regions_df:
+    for region in regions:
 
         region = region['GID_{}'.format(regional_level)]
         
@@ -70,6 +70,9 @@ def run_preprocessing(country):
 
         #print('Working on create_regional_sites_layer')
         create_regional_sites_layer(iso3, 2, region)
+
+    print('Exporting cell counts by region')
+    export_cell_counts(country, regions)
 
     return
 
@@ -578,15 +581,6 @@ def create_regional_sites_layer(iso3, level, region):
         return
     sites = pd.read_csv(path)
 
-    # filename = '{}.shp'.format(region)
-    # folder = os.path.join(DATA_PROCESSED, iso3, 'surface_water', 'regions')
-    # path_in = os.path.join(folder, filename)
-    # on_water = 0
-    # surface_water = []
-    # if os.path.exists(path_in):
-    #     surface_water = gpd.read_file(path_in, crs='epsg:4326')
-    #     surface_water = surface_water.unary_union
-
     output = []
 
     for idx, site in sites.iterrows():
@@ -595,14 +589,6 @@ def create_regional_sites_layer(iso3, level, region):
 
         if not geom.intersects(region_df):
             continue
-
-        # if not type(surface_water) == list:
-        #     try:
-        #         surface_water_results = surface_water.contains(geom)
-        #         if surface_water_results.any():
-        #             on_water = 1
-        #     except:
-        #         on_water = 0
 
         geom_4326 = geom
 
@@ -624,7 +610,6 @@ def create_regional_sites_layer(iso3, level, region):
                 round(geom_3857.coords.xy[0][0],6),
                 round(geom_3857.coords.xy[1][0],6)
             ),
-            # 'on_water': on_water
         })
 
     if len(output) > 0:
@@ -638,94 +623,53 @@ def create_regional_sites_layer(iso3, level, region):
     return
 
 
-def process_surface_water(country, region):
+def export_cell_counts(country, regions):
     """
-    Load in intersecting raster layers, and export large
-    water bodies as .shp.
-
-    Parameters
-    ----------
-    country : string
-        Country parameters.
+    Aggregate cell counts.
 
     """
-    level = country['gid_region']
-    gid_id = 'GID_{}'.format(level)
-
-    filename = 'regions_{}_{}.shp'.format(level, country['iso3'])
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'regions')
-    path = os.path.join(folder, filename)
-    regions = gpd.read_file(path, crs='epsg:4326')
-    polygon = regions[regions[gid_id] == region]
-
-    filename = '{}.shp'.format(region)
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'surface_water', 'regions')
-    path_out = os.path.join(folder, filename)
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    poly_bounds = polygon['geometry'].total_bounds
-    poly_bbox = box(*poly_bounds, ccw = False)
-
-    path_lc = os.path.join(DATA_RAW, 'global_surface_water', 'chopped')
-
-    surface_files = [
-        os.path.abspath(os.path.join(path_lc, f)
-        ) for f in os.listdir(path_lc) if f.endswith('.tif')
-    ]
+    gid_level = "GID_{}".format(country['gid_region'])
 
     output = []
 
-    for surface_file in surface_files:
+    for region in regions:#[:1]:
 
-        # print(os.path.basename(surface_file))
-        # if not os.path.basename(surface_file) in [
-        #     # 'occurrence_20E_0Nv1_3_2020.tif',
-        #     'occurrence_30E_0Nv1_3_2020_0_0.tif'
-        #     ]:
-        #     continue
+        filename = '{}.csv'.format(region[gid_level])
+        folder = os.path.join(DATA_PROCESSED, country['iso3'], 'sites', gid_level.lower())
+        path = os.path.join(folder, filename)
+        if not os.path.exists(path):
+            continue
+        cells = pd.read_csv(path)
+        cells = cells.to_dict('records')
+        
+        # for radio in ['GSM','UMTS','LTE']:
+        #     count = 0
+        gsm = 0
+        umts = 0
+        lte = 0
 
-        path = os.path.join(path_lc, surface_file)
+        for cell in cells: 
+            if cell['radio'] == 'GSM':
+                gsm +=1
+            elif cell['radio'] == 'UMTS':
+                umts +=1
+            elif cell['radio'] == 'LTE':
+                lte +=1
 
-        src = rasterio.open(path, 'r+')
+        output.append({
+            'gid_id': region[gid_level],
+            'gid_level': gid_level,
+            'gsm': gsm,
+            'umts': umts,
+            'lte': lte,
+        })
 
-        tiff_bounds = src.bounds
-        tiff_bbox = box(*tiff_bounds)
+    output = pd.DataFrame(output)
 
-        if tiff_bbox.intersects(poly_bbox):
-
-            print('-Working on {}'.format(surface_file))
-
-            data = src.read()
-            data[data < 10] = 0
-            data[data >= 10] = 1
-            polygons = rasterio.features.shapes(data, transform=src.transform)
-
-            for poly, value in polygons:
-                if value > 0:
-                    output.append({
-                        'geometry': poly,
-                        'properties': {
-                            'value': value
-                        }
-                    })
-
-    output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
-
-    #folder = os.path.join(DATA_PROCESSED, country['iso3'], 'surface_water', 'regions')
-    #output.to_file(os.path.join(folder, 'test.shp'), crs='epsg:4326')
-
-    mask = output.area > .0001 #country['threshold']
-    output = output.loc[mask]
-
-    output = gpd.overlay(output, polygon, how='intersection')
-
-    output['geometry'] = output.apply(remove_small_shapes, axis=1)
-
-    mask = output.area > .0001 #country['threshold']
-    output = output.loc[mask]
-
-    output.to_file(path_out, crs='epsg:4326')
+    filename = 'cells_by_region.csv'
+    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'sites')
+    path_out = os.path.join(folder, filename)
+    output.to_csv(path_out, index=False)
 
     return
 
