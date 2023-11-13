@@ -187,6 +187,102 @@ def area_of_polygon(geom):
     return abs(poly_area)
 
 
+def generate_tile_population(country):
+    """
+    Extract regional data including luminosity and population.
+
+    Parameters
+    ----------
+    country : dict
+        Contains all desired country information.
+
+    """
+    iso3 = country['iso3']
+    level = country['regional_level']
+    gid_level = 'GID_{}'.format(level)
+
+    filename = 'population_tiles.csv'
+    folder_out = os.path.join(DATA_PROCESSED, iso3, 'population')
+    path_output = os.path.join(folder_out, filename)
+
+    # if os.path.exists(path_output):
+    #     return print('Regional data already exists')
+
+    # path_country = os.path.join(DATA_PROCESSED, iso3,
+    #     'national_outline.shp')
+    # single_country = gpd.read_file(path_country)
+
+    folder_in = os.path.join(DATA_PROCESSED, iso3, 'population')
+    filename = 'settlements.tif'
+    path_settlements = os.path.join(folder_in, filename)        
+
+    # filename = 'regions_{}_{}.shp'.format(level, iso3)
+    # folder = os.path.join(DATA_PROCESSED, iso3, 'regions')
+    # path = os.path.join(folder, filename)
+    # regions = gpd.read_file(path)#[:1]
+    # regions = regions.to_dict('records')
+
+    filename = 'grid_{}_{}_km.shp'.format(10000, 10000)
+    folder = os.path.join(DATA_PROCESSED, iso3, 'grid')
+    path = os.path.join(folder, filename)
+    tiles = gpd.read_file(path)#[:1]
+    tiles = tiles.to_dict('records')
+
+    results = []
+
+    for tile in tiles:
+
+        with rasterio.open(path_settlements) as src:
+
+            affine = src.transform
+            array = src.read(1)
+            array[array <= 0] = 0
+
+            population_summation = [d['sum'] for d in zonal_stats(
+                tile['geometry'],
+                array,
+                stats=['sum'],
+                nodata=0,
+                affine=affine
+                )][0]
+
+            if population_summation == None:
+                continue
+
+            population_summation = round(population_summation)
+
+        area_km2 = tile['area_km2']
+
+        if area_km2 == 0:
+            continue
+
+        if area_km2 > 0:
+            population_km2 = (
+                population_summation / area_km2 if population_summation else 0)
+        else:
+            population_km2 = 0
+
+        # representative_point = tile['geometry'].representative_point()
+
+        results.append({
+            'iso3': country['iso3'],
+            'GID_id': tile['GID_id'],
+            # 'GID_id': "{}_{}".format(representative_point.x, representative_point.y),
+            'GID_level': gid_level,
+            'population': (population_summation if population_summation else 0),
+            'area_km2': area_km2,
+            'population_km2': population_km2,
+        })
+
+    results_df = pd.DataFrame(results)
+
+    results_df.to_csv(path_output, index=False)
+
+    print('Completed {}'.format(country['iso3']))
+
+    return print('Completed night lights data querying')
+
+
 if __name__ == '__main__':
 
     countries = [{
@@ -199,7 +295,10 @@ if __name__ == '__main__':
         print('Processing settlement layers')
         process_settlement_layer(country)
 
-        print('Generating regional population')
-        generate_population(country)
+        # print('Generating regional population')
+        # generate_population(country)
+
+        print('Generating tile population')
+        generate_tile_population(country)
 
     print('--Completed regional population data estimation')
