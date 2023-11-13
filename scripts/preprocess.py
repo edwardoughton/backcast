@@ -35,44 +35,59 @@ def run_preprocessing(country):
     iso3 = country['iso3']
     regional_level = int(country['gid_region'])
 
-    print('Working on create_national_sites_csv')
-    create_national_sites_csv(country)
+    # print('Working on create_national_sites_csv')
+    # create_national_sites_csv(country)
 
-    print('Working on process_country_shapes')
-    process_country_shapes(iso3)
+    # print('Working on process_country_shapes')
+    # process_country_shapes(iso3)
 
-    print('Working on process_regions')
-    process_regions(iso3, regional_level)
+    # print('Working on process_regions')
+    # process_regions(iso3, regional_level)
 
-    print('Working on create_national_sites_shp')
-    create_national_sites_shp(iso3)
+    # print('Working on create_national_sites_shp')
+    # create_national_sites_shp(iso3)
 
-    regions = get_regions(country, regional_level)
-    regions = regions.to_dict('records')
+    # regions = get_regions(country, regional_level)
+    # regions = regions.to_dict('records')
 
-    print('Working on regional disaggregation')
-    for region in regions:
+    # print('Working on regional disaggregation')
+    # for region in regions:
 
-        region = region['GID_{}'.format(regional_level)]
+    #     region = region['GID_{}'.format(regional_level)]
         
-        print("working on {}".format(region))
+    #     print("working on {}".format(region))
 
-        gid_1 = get_gid_1(region)
+    #     gid_1 = get_gid_1(region)
 
-        #print('Working on segment_by_gid_1')
-        segment_by_gid_1(iso3, 1, gid_1)
+    #     #print('Working on segment_by_gid_1')
+    #     segment_by_gid_1(iso3, 1, gid_1)
 
-        #print('Working on create_regional_sites_layer')
-        create_regional_sites_layer(iso3, 1, gid_1)
+    #     #print('Working on create_regional_sites_layer')
+    #     create_regional_sites_layer(iso3, 1, gid_1)
 
-        #print('Working on segment_by_gid_2')
-        segment_by_gid_2(iso3, 2, region, gid_1)
+    #     #print('Working on segment_by_gid_2')
+    #     segment_by_gid_2(iso3, 2, region, gid_1)
 
-        #print('Working on create_regional_sites_layer')
-        create_regional_sites_layer(iso3, 2, region)
+    #     #print('Working on create_regional_sites_layer')
+    #     create_regional_sites_layer(iso3, 2, region)
 
-    print('Exporting cell counts by region')
-    export_cell_counts(country, regions)
+    # print('Exporting cell counts by region')
+    # export_cell_counts(country, regions)
+
+    print('Working on export_road_network')
+    export_road_network(country)
+
+    # print('Working on process_road_network')
+    # process_road_network(country)
+
+    # print('Working on process_regional_coverage')
+    # process_regional_coverage(country)
+
+    # print('Working on convert_regional_coverage_to_shapes')
+    # convert_regional_coverage_to_shapes(country)
+
+
+
 
     return
 
@@ -673,6 +688,223 @@ def export_cell_counts(country, regions):
 
     return
 
+
+def export_road_network(country):
+    """
+    Export road network. 
+
+    """
+    filename = 'gis_osm_roads_free_1.shp'
+    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    path_out = os.path.join(folder, filename)
+
+    # if os.path.exists(path_out):
+    #     return print('Already exists: {}'.format(path_out))
+
+    filename = 'gis_osm_roads_free_1.shp'
+    folder = os.path.join(DATA_RAW, 'osm')
+    path_in = os.path.join(folder, filename)
+    data = gpd.read_file(path_in, crs='epsg:4326')
+    data = data.to_dict('records')
+
+    output = []
+
+    for item in data:
+        if item['fclass'] in [
+            'motorway',
+            'trunk',
+            'primary'
+        ]:
+            output.append({
+                'geometry': item['geometry'],
+                'properties': {
+                    'osm_id': item['osm_id'],
+                    'fclass': item['fclass'],
+                    'maxspeed': item['maxspeed'],
+                }
+            })
+
+    output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
+
+    output.to_file(path_out, crs='epsg:4326')
+
+    return
+
+
+def process_road_network(country):
+    """
+    Process road network. 
+
+    """
+    filename = 'gis_osm_roads_free_1.shp'
+    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
+    path_in = os.path.join(folder, filename)
+    data = gpd.read_file(path_in, crs='epsg:4326')
+    data = data.to_crs(3857)
+
+    data['geometry'] = data['geometry'].buffer(2000)
+    data = data.dissolve()
+    data = data.to_crs(4326)
+
+    filename = 'road_network_processed.shp'
+    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
+    path_out = os.path.join(folder, filename)
+    data.to_file(path_out, crs='epsg:4326')
+
+    return
+
+
+def process_regional_coverage(country):
+    """
+    Cut coverage by region. 
+
+    """
+    level = 2
+    iso3 = country['iso3']
+    gid_level = 'GID_{}'.format(level)
+
+    filename = 'regions_{}_{}.shp'.format(level, iso3)
+    folder = os.path.join(DATA_PROCESSED, iso3, 'regions')
+    path = os.path.join(folder, filename)
+    regions = gpd.read_file(path)
+    regions = regions.to_crs(3857)
+    regions = regions.to_dict('records')#[:1]
+
+    technologies = [
+        '2G',
+        '3G',
+        '4G'
+    ]
+
+    output = {}
+
+    for tech in technologies:
+
+        folder_name = 'MCE_{}'.format(tech)
+        folder = os.path.join(DATA_RAW, 'Mobile Coverage Explorer v2020 - GeoTIFF', 'ByCountry', folder_name)
+        path =  os.path.join(folder, 'MCE_MX{}_2020.tif'.format(tech))
+
+        data = rasterio.open(path, 'r+')
+        data.nodata = 255
+        data.crs = {"init": "epsg:3857"}
+
+        for region in regions:
+
+            folder_out = os.path.join(DATA_PROCESSED, iso3, 'coverage', "coverage_{}_tifs".format(tech))
+            if not os.path.exists(folder_out):
+                os.makedirs(folder_out)
+            path_out = os.path.join(folder_out, '{}.tif'.format(region['GID_2']))
+
+            if os.path.exists(path_out):
+                continue
+
+            list_of_dicts = [{
+                    'geometry': region['geometry'], 
+                    'properties': {
+                        'gid_id': region['GID_2']
+                    }
+                }]
+            geo = gpd.GeoDataFrame.from_features(list_of_dicts, crs='epsg:3857')
+
+            coords = [json.loads(geo.to_json())['features'][0]['geometry']]
+
+            out_img, out_transform = mask(data, coords, crop=True)
+
+            out_meta = data.meta.copy()
+
+            out_meta.update({"driver": "GTiff",
+                            "height": out_img.shape[1],
+                            "width": out_img.shape[2],
+                            "transform": out_transform,
+                            "crs": 'epsg:4326'})
+
+            with rasterio.open(path_out, "w", **out_meta) as dest:
+                    dest.write(out_img)
+
+    return output
+
+
+def convert_regional_coverage_to_shapes(country):
+    """
+    Convert to shapes. 
+
+    """
+    level = 2
+    iso3 = country['iso3']
+    gid_level = 'GID_{}'.format(level)
+
+    technologies = [
+        '2G',
+        '3G',
+        '4G'
+    ]
+
+    output = {}
+
+    for tech in technologies:
+
+        folder_name = 'coverage_{}_tifs'.format(tech)
+        folder = os.path.join(DATA_PROCESSED, iso3, 'coverage', folder_name)
+        tif_files = os.listdir(folder)#[:1]
+
+        for tif_file in tif_files:
+
+            if not tif_file.endswith('.tif'):
+                continue
+
+            filename_out = tif_file.replace('.tif','.shp')
+            folder_name = 'coverage_{}_shps'.format(tech)
+            folder_out = os.path.join(DATA_PROCESSED, iso3, 'coverage', folder_name)
+            if not os.path.exists(folder_out):
+                os.mkdir(folder_out)
+            path_out = os.path.join(folder_out, filename_out)
+
+            # if os.path.exists(path_out):
+            #     continue
+
+            with rasterio.open(os.path.join(folder, tif_file)) as src:
+
+                affine = src.transform
+                array = src.read(1)
+
+                output = []
+
+                for vec in rasterio.features.shapes(array):
+
+                    if vec[1] > 0 and not vec[1] == 255:
+
+                        coordinates = [i for i in vec[0]['coordinates'][0]]
+
+                        coords = []
+
+                        for i in coordinates:
+
+                            x = i[0]
+                            y = i[1]
+
+                            x2, y2 = src.transform * (x, y)
+
+                            coords.append((x2, y2))
+
+                        output.append({
+                            'type': vec[0]['type'],
+                            'geometry': {
+                                'type': 'Polygon',
+                                'coordinates': [coords],
+                            },
+                            'properties': {
+                                'value': vec[1],
+                            }
+                        })
+            if len(output) == 0:
+                continue
+
+            output = gpd.GeoDataFrame.from_features(output, crs='epsg:3857')
+            output = output.to_crs(4326)
+            output.to_file(path_out, driver='ESRI Shapefile')
+    
 
 if __name__ == "__main__":
 
