@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import contextily as ctx
 from pylab import * #is this needed
 # import imageio
+import seaborn as sns
 
 CONFIG = configparser.ConfigParser()
 CONFIG.read(os.path.join(os.path.dirname(__file__), '..', 'scripts', 'script_config.ini'))
@@ -215,14 +216,17 @@ def multiplot_tile_deployment(iso3):
 
     for year in unique_years:
 
-        print('Working on {}'.format(year))
+        if not year in [2005,2010,2015,2020]:
+            continue
+
+        print('--Working on {}'.format(year))
 
         yearly_data = []
         
         for item in data:
             if year == item['year']:
                 yearly_data.append({
-                    'gid_id': item['gid_id'],
+                    'id_lower': item['id_lower'],
                     'radio': item['radio'],
                     'cells_to_build': item['cells_to_build'],
                 })
@@ -235,7 +239,7 @@ def multiplot_tile_deployment(iso3):
         fig.subplots_adjust(hspace=.3, wspace=.1)
         fig.set_facecolor('gainsboro')
 
-        shapes_subset = shapes.merge(data_subset, left_on='GID_id', right_on='gid_id')
+        shapes_subset = shapes.merge(data_subset, left_on='GID_id', right_on='id_lower')
 
         for ax in [ax1, ax2]:
             for dim in [0,1]:
@@ -284,193 +288,300 @@ def multiplot_tile_deployment(iso3):
     return
 
 
-# def plot_gif_maps():
-#     """
-#     Plot maps and create gif
+def plot_coverage(iso3):
+    """
+    Plot regions by geotype.
+
+    """
+    for radio in [
+        ('gsm', '2G'),
+        ('umts', '3G'),
+        ('lte', '4G')
+        ]:
+
+        shapes = []
+
+        folder_in = os.path.join(DATA_PROCESSED, iso3, 'coverage', 'coverage_{}_shps'.format(radio[1]))
+        path = os.path.join(folder_in, '..', 'coverage_{}.shp'.format(radio[1]))
+                            
+        if not os.path.exists(path):
+            filenames = os.listdir(folder_in)#[:10]
+            for filename in filenames:
+                if not filename.endswith('.shp'):
+                    continue
+                path_in = os.path.join(folder_in, filename)
+                data = gpd.read_file(path_in, crs='epsg:4326')
+                data = data.to_dict('records')
+                for item in data:
+
+                    value = item['value']
+                    if item['value'] == 2:
+                        value = 1
+                    elif item['value'] == 3:
+                        value = 0
+
+                    shapes.append({
+                        'geometry': item['geometry'],
+                        'properties': {
+                            'coverage': value
+                        }
+                    })
+
+            shapes = gpd.GeoDataFrame.from_features(shapes, crs='epsg:4326')
+            shapes.to_file(path, crs='epsg:4326')  
+
+    path_in = os.path.join(DATA_PROCESSED, iso3, 'coverage', 'coverage_2G.shp')
+    coverage_2G = gpd.read_file(path_in, crs='epsg:4326')
+
+    path_in = os.path.join(DATA_PROCESSED, iso3, 'coverage', 'coverage_3G.shp')
+    coverage_3G = gpd.read_file(path_in, crs='epsg:4326')
+
+    path_in = os.path.join(DATA_PROCESSED, iso3, 'coverage', 'coverage_4G.shp')
+    coverage_4G = gpd.read_file(path_in, crs='epsg:4326')
+
+    coverage_2G = coverage_2G[coverage_2G['coverage'] == 1] 
+    coverage_3G = coverage_3G[coverage_3G['coverage'] == 1] 
+    coverage_4G = coverage_4G[coverage_4G['coverage'] == 1] 
+
+    plt.rcParams["font.family"] = "Times New Roman"
+    fig, (ax1, ax2) = plt.subplots(2, 2, figsize=(11,8))
+    fig.subplots_adjust(hspace=.3, wspace=.1)
+    fig.set_facecolor('gainsboro')
+
+    country = gpd.read_file(os.path.join(DATA_PROCESSED, iso3, 'national_outline.shp'), crs='epsg:4326')
+    minx, miny, maxx, maxy = country.total_bounds
+       
+    country.plot(ax=ax1[0], color='whitesmoke', linewidth=0.1, alpha=.2, edgecolor='grey', zorder=1)
+    country.plot(ax=ax1[1], color='whitesmoke', linewidth=0.1, alpha=.2, edgecolor='grey', zorder=1)
+    country.plot(ax=ax2[0], color='whitesmoke', linewidth=0.1, alpha=.2, edgecolor='grey', zorder=1)
+    country.plot(ax=ax2[1], color='whitesmoke', linewidth=0.1, alpha=.2, edgecolor='grey', zorder=1)
+
+    coverage_2G.plot(color='red', lw=.6, ax=ax1[0], zorder=20)
+    coverage_3G.plot(color='orange', lw=.4, ax=ax1[1], zorder=15)
+    coverage_4G.plot(color='blue', lw=.2, ax=ax2[0], zorder=10)
+
+    ctx.add_basemap(ax1[0], crs=country.crs, source=ctx.providers.CartoDB.Voyager)    
+    ctx.add_basemap(ax1[1], crs=country.crs, source=ctx.providers.CartoDB.Voyager)    
+    ctx.add_basemap(ax2[0], crs=country.crs, source=ctx.providers.CartoDB.Voyager)    
+    ctx.add_basemap(ax2[1], crs=country.crs, source=ctx.providers.CartoDB.Voyager)   
+
+    ax1[0].set_title('2G GSM', fontname='Times New Roman')
+    ax1[1].set_title('3G UMTS', fontname='Times New Roman')
+    ax2[0].set_title('4G LTE', fontname='Times New Roman')
+    ax2[1].set_title('5G NR', fontname='Times New Roman')
+
+    main_title = 'Cellular coverage by generation in Mexico: {}'.format(str(2020))
+    plt.suptitle(main_title, fontsize=20, y=.98, fontname='Times New Roman')
+
+    fig.tight_layout()
     
-#     """
-#         # #Loading regional data by pop density geotype
-#     # path = os.path.join(DATA_PROCESSED, 'all_regional_data.csv')
-#     # data = pd.read_csv(path)
+    filename = 'coverage.png'
+    fig.savefig(os.path.join(VIS, filename), dpi=600)
 
-#     all_shapes = pd.DataFrame()
-#     for iso3 in ['BFA', 'MLI', 'NER']:
-#         path = os.path.join(DATA_PROCESSED, iso3, 'acled', 'acled_{}.shp'.format(iso3))
-#         data = gpd.read_file(path, crs='epsg:4326')
-#         all_shapes = pd.concat([all_shapes, data])
-
-#     #convert single digit days/months to have leading zeros
-#     all_shapes['day'] = all_shapes['day'].astype(str)
-#     all_shapes['day'] = all_shapes['day'].str.zfill(2)
-#     all_shapes['month'] = all_shapes['month'].astype(str)
-#     all_shapes['month'] = all_shapes['month'].str.zfill(2)
-
-#     all_shapes['date'] = (
-#         all_shapes['year'].astype(str) + 
-#         all_shapes['month'].astype(str) +
-#         all_shapes['day'].astype(str)
-#     )
-#     all_shapes['date'] = all_shapes['date'].astype(int)
-
-#     country_shapes = pd.DataFrame()
-#     for iso3 in ['BFA', 'MLI', 'NER']:
-#         path = os.path.join(DATA_PROCESSED, iso3, 'national_outline.shp')
-#         data = gpd.read_file(path, crs='epsg:4326')
-#         country_shapes = pd.concat([country_shapes, data])
-
-#     unique_dates = all_shapes['date']
-
-#     for year in range(2018,2024):
-        
-#         for month in range(1,13):
-
-#             if year == 2023 and month > 5:
-#                 return
-
-#             year_month_day = "{}{}{}".format(year, str(month).zfill(2), 31)
-
-#             shapes = all_shapes[all_shapes['date'] <= int(year_month_day)]
-
-#             plot_map(country_shapes, shapes, year, month)
-
-#     return
+    plt.close(fig)
 
 
-# def plot_map(country_shapes, shapes, date_year, date_month):
-#     """
-#     Plot map. 
+def plot_regions_by_geotype(iso3):
+    """
+    Plot regions by geotype.
 
-#     """
-#     bins = [0,
-#             20200101,20200701,
-#             20210101,20210701,
-#             20220101,20220701,
-#             20230101,
-#             1e9]
-#     labels = ['Pre-2020',
-#               '2020 Q1-Q2','2020 Q3-Q4',
-#               '2021 Q1-Q2','2021 Q3-Q4',
-#               '2022 Q1-Q2','2022 Q3-Q4',
-#               '2023 Q1-Q2'#,'2023 Q3-Q4'
-#             ]
+    """
+    filename = 'all_data.shp'
+    folder_in = os.path.join(DATA_PROCESSED, iso3)
+    path_in = os.path.join(folder_in, filename)
+    regions = gpd.read_file(path_in, crs='epsg:4326')#[:5]
+    n = len(regions)
 
-#     shapes['bin'] = pd.cut(
-#         shapes['date'], 
-#         bins=bins,
-#         labels=labels
-#     )
-#     plt.rcParams["font.family"] = "Times New Roman"
-#     fig, ax = plt.subplots(1, 1, figsize=(12,7))
+    metric = 'pop_km2'
 
-#     minx, miny, maxx, maxy = country_shapes.total_bounds
-#     ax.set_xlim(minx+1, maxx-6)
-#     ax.set_ylim(miny, maxy-6)
+    bins = [-1, 10, 50, 100, 250, 500, 750, 1000, 2000, 5000, 1e8]
+    labels = [
+        '<10 $\mathregular{km^2}$',
+        '10-50 $\mathregular{km^2}$',
+        '50-100 $\mathregular{km^2}$',
+        '100-250 $\mathregular{km^2}$',
+        '250-500 $\mathregular{km^2}$',
+        '500-750 $\mathregular{km^2}$',
+        '750-1000 $\mathregular{km^2}$',
+        '1000-2000 $\mathregular{km^2}$',
+        '2000-5000 $\mathregular{km^2}$',
+        '>5000 $\mathregular{km^2}$'
+    ]
 
-#     plt.figure()
+    regions['bin'] = pd.cut(
+        regions[metric],
+        bins=bins,
+        labels=labels
+    )
 
-#     base = shapes.plot(
-#         column='bin', 
-#         ax=ax, 
-#         cmap='viridis_r', 
-#         linewidth=0.1,
-#         legend=True, 
-#         edgecolor='grey'
-#         )
-#     country_shapes.plot(ax=base, facecolor="none", edgecolor='black', linewidth=0.75)
+    sns.set(font_scale=1, font="Times New Roman")
+    sns.set_style("ticks")
+    fig, ax = plt.subplots(1, 1, figsize=(8,5.85))
+    fig.set_facecolor('gainsboro')
+    minx, miny, maxx, maxy = regions.total_bounds
 
-#     handles, labels = ax.get_legend_handles_labels()
+    ax.set_xlim(minx-1, maxx+1)
+    ax.set_ylim(miny-1.5, maxy+1.5)
 
-#     fig.legend(handles[::-1], labels[::-1])
+    regions.plot(column='bin', ax=ax, cmap='viridis_r', linewidth=0.2, alpha=0.8,
+    legend=True, edgecolor='grey')
 
-#     ctx.add_basemap(ax, crs=shapes.crs, source=ctx.providers.CartoDB.Voyager)
+    handles, labels = ax.get_legend_handles_labels()
 
-#     date = "{} {}".format(find_month(date_month), date_year)
+    fig.legend(handles[::-1], labels[::-1])
 
-#     fig.suptitle(
-#         str('ACLED Conflict Events Affecting Telecommunications Infrastructure\nin Burkina Faso, Mali and Niger\n{}'.format(date)), 
-#         fontsize=18, fontname='Times New Roman')
+    ctx.add_basemap(ax, crs=regions.crs, source=ctx.providers.CartoDB.Voyager)    
 
-#     fig.tight_layout()
-#     filename = '{}{}.png'.format(date_year, str(date_month).zfill(2))
-#     folder = os.path.join(VIS, 'gif_maps')
-#     if not os.path.exists(folder):
-#         os.mkdir(folder)
-#     fig.savefig(os.path.join(folder, filename))
+    name = 'Population Density by Grid Tile (n={})'.format(n)
+    fig.suptitle(name, fontsize=16, y=.97, fontname='Times New Roman')
 
-#     plt.close(fig)
+    fig.tight_layout()
+    path_out = os.path.join(VIS, 'population_density_km2')
+    fig.savefig(path_out, dpi=600)
+
+    plt.close(fig)
 
 
-# def find_month(date_month):
-#     """
-#     Given a monthly number, return the correct monthly string. 
+def plot_road_network(iso3):
+    """
+    Plot road network. 
 
-#     """
-#     if str(date_month) == "1":
-#         return "January"
-#     elif str(date_month) == "2":
-#         return "February"
-#     elif str(date_month) == "3":
-#         return "March"
-#     elif str(date_month) == "4":
-#         return "April"
-#     elif str(date_month) == "5":
-#         return "May"
-#     elif str(date_month) == "6":
-#         return "June"
-#     elif str(date_month) == "7":
-#         return "July"
-#     elif str(date_month) == "8":
-#         return "August"
-#     elif str(date_month) == "9":
-#         return "September"
-#     elif str(date_month) == "10":
-#         return "October"
-#     elif str(date_month) == "11":
-#         return "November"
-#     elif str(date_month) == "12":
-#         return "December"
-#     else:
-#         print(date_month)
-#         return "Did not recognize month"
+    """
+    filename = 'national_outline.shp'
+    folder_in = os.path.join(DATA_PROCESSED, iso3)
+    path_in = os.path.join(folder_in, filename)
+    regions = gpd.read_file(path_in, crs='epsg:4326')#[:5]
 
-#     return
+    filename = 'road_network_processed.shp'
+    folder_in = os.path.join(DATA_PROCESSED, iso3, 'infrastructure')
+    path_in = os.path.join(folder_in, filename)
+    roads = gpd.read_file(path_in, crs='epsg:4326')#[:5]
+
+    motorway = roads[roads['fclass'] == 'motorway'] 
+    primary = roads[roads['fclass'] == 'primary'] 
+    secondary = roads[roads['fclass'] == 'secondary'] 
+    tertiary = roads[roads['fclass'] == 'tertiary'] 
+
+    sns.set(font_scale=1, font="Times New Roman")
+    sns.set_style("ticks")
+    fig, ax = plt.subplots(1, 1, figsize=(8,5.85))
+    fig.set_facecolor('gainsboro')
+    minx, miny, maxx, maxy = regions.total_bounds
+
+    ax.set_xlim(minx-1, maxx+1)
+    ax.set_ylim(miny-1.5, maxy+1.5)
+    
+    regions.plot(ax=ax, color='whitesmoke', linewidth=0.2, alpha=1, edgecolor='grey', zorder=1)
+    motorway.plot(color='red', lw=.6, ax=ax, zorder=20)
+    primary.plot(color='orange', lw=.4, ax=ax, zorder=15)
+    secondary.plot(color='blue', lw=.2, ax=ax, zorder=10)
+    tertiary.plot(color='grey', lw=0.2, ax=ax, zorder=5)
+
+    handles, labels = ax.get_legend_handles_labels()
+
+    fig.legend(handles[::-1], labels[::-1])
+
+    ctx.add_basemap(ax, crs=regions.crs, source=ctx.providers.CartoDB.Voyager)    
+
+    name = 'Key Segments of the Mexican Road Network'
+    fig.suptitle(name, fontsize=16, y=.97, fontname='Times New Roman')
+
+    plt.legend(['Motorway', 'Primary', 'Secondary', 'Tertiary'], loc='upper right', title='Road Types')
+
+    fig.tight_layout()
+    path_out = os.path.join(VIS, 'road_network.png')
+    fig.savefig(path_out, dpi=600)
+
+    plt.close(fig)
 
 
-# def generate_gif():
-#     """
-#     Stitch all maps together into gif. 
+def plot_regions_by_investment_attractiveness(iso3):
+    """
+    Plot map. 
 
-#     """
-#     images = []
+    """
+    filename = 'gsm_tiles.shp'
+    folder = os.path.join(BASE_PATH, '..', 'results', iso3, 'by_radio')
+    path = os.path.join(folder, filename)
+    shapes = gpd.read_file(path, crs='epsg:4326')
 
-#     folder = os.path.join(VIS, 'gif_maps')
+    bins = [-1, 10, 50, 100, 250, 500, 750, 1000, 2000, 5000, 1e8]
+    labels = [
+        '<10',
+        '10-50',
+        '50-100',
+        '100-250',
+        '250-500',
+        '500-750',
+        '750-1000',
+        '1000-2000',
+        '2000-5000',
+        '>5000'
+    ]
 
-#     filenames = os.listdir(folder)
+    shapes['bin'] = pd.cut(
+        shapes['attractive'], 
+        bins=bins,
+        labels=labels
+    )
 
-#     for filename in filenames:
+    sns.set(font_scale=1, font="Times New Roman")
+    sns.set_style("ticks")
+    fig, ax = plt.subplots(1, 1, figsize=(8,5.85))
+    fig.set_facecolor('gainsboro')
 
-#         path = os.path.join(folder, filename)
+    minx, miny, maxx, maxy = shapes.total_bounds
+    ax.set_xlim(minx-1, maxx+1)
+    ax.set_ylim(miny-1.5, maxy+1.5)
 
-#         images.append(imageio.imread(path))
+    plt.figure()
 
-#     kargs = {'duration': .25}
-#     imageio.mimsave(os.path.join(VIS, 'gif.gif'), images, **kargs)
+    base = shapes.plot(
+        column='bin', 
+        ax=ax, 
+        cmap='inferno_r', 
+        linewidth=0.1,
+        legend=True, 
+        edgecolor='grey'
+        )
+    # country_shapes.plot(ax=base, facecolor="none", edgecolor='black', linewidth=0.75)
 
-#     return print('Generated .gif')
+    handles, labels = ax.get_legend_handles_labels()
+
+    fig.legend(handles[::-1], labels[::-1])
+
+    ctx.add_basemap(ax, crs=shapes.crs, source=ctx.providers.CartoDB.Voyager)
+    
+    fig.suptitle('Investment attractiveness for mobile infrastructure deployment', 
+                    fontsize=18, 
+                    fontname='Times New Roman')
+
+    fig.tight_layout()
+    filename = 'investment_attractiveness.png'
+    folder = os.path.join(VIS)
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    fig.savefig(os.path.join(folder, filename), dpi=600)
+
+    plt.close(fig)
 
 
 if __name__ == '__main__':
 
     iso3 = 'MEX'
 
-    # plot_deployment(iso3)
+    plot_deployment(iso3)
 
-    # multiplot_deployment(iso3)
+    multiplot_deployment(iso3)
 
     multiplot_tile_deployment(iso3)
 
-    # plot_gif_maps()
+    plot_coverage(iso3)
 
-    # generate_gif()
+    plot_regions_by_geotype(iso3)
+
+    plot_road_network(iso3)
+
+    plot_regions_by_investment_attractiveness(iso3)
 
     print('Complete')
