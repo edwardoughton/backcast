@@ -35,62 +35,47 @@ def run_preprocessing(country):
     iso3 = country['iso3']
     regional_level = int(country['gid_region'])
 
-    print('Working on create_national_sites_csv')
-    create_national_sites_csv(country)
+    # print('Working on create_national_sites_csv')
+    # create_national_sites_csv(country)
 
-    print('Working on process_country_shapes')
-    process_country_shapes(iso3)
+    # print('Working on process_country_shapes')
+    # process_country_shapes(iso3)
 
-    print('Working on process_regions')
-    process_regions(iso3, regional_level)
+    # print('Working on process_regions')
+    # process_regions(iso3, regional_level)
 
-    print('Working on create_national_sites_shp')
-    create_national_sites_shp(iso3)
+    # print('Working on create_national_sites_shp')
+    # create_national_sites_shp(iso3)
 
-    regions = get_regions(country, regional_level)
-    regions = regions.to_dict('records')
+    # regions = get_regions(country, regional_level)
+    # regions = regions.to_dict('records')
 
-    print('Working on regional disaggregation')
-    for region in regions:
+    # print('Working on regional disaggregation')
+    # for region in regions:
 
-        region = region['GID_{}'.format(regional_level)]
+    #     region = region['GID_{}'.format(regional_level)]
         
-        print("working on {}".format(region))
+    #     print("working on {}".format(region))
 
-        gid_1 = get_gid_1(region)
+    #     gid_1 = get_gid_1(region)
 
-        #print('Working on segment_by_gid_1')
-        segment_by_gid_1(iso3, 1, gid_1)
+    #     #print('Working on segment_by_gid_1')
+    #     segment_by_gid_1(iso3, 1, gid_1)
 
-        #print('Working on create_regional_sites_layer')
-        create_regional_sites_layer(iso3, 1, gid_1)
+    #     #print('Working on create_regional_sites_layer')
+    #     create_regional_sites_layer(iso3, 1, gid_1)
 
-        #print('Working on segment_by_gid_2')
-        segment_by_gid_2(iso3, 2, region, gid_1)
+    #     #print('Working on segment_by_gid_2')
+    #     segment_by_gid_2(iso3, 2, region, gid_1)
 
-        #print('Working on create_regional_sites_layer')
-        create_regional_sites_layer(iso3, 2, region)
+    #     #print('Working on create_regional_sites_layer')
+    #     create_regional_sites_layer(iso3, 2, region)
 
-    print('Exporting cell counts by region')
-    export_cell_counts(country, regions)
+    # print('Exporting cell counts by region')
+    # export_cell_counts(country, regions)
 
-    print('Working on export_regional_road_network_grid')
-    export_regional_road_network_grid(country)
-
-    print('Working on export_regional_road_network')
-    export_regional_road_network(country)
-
-    print('Working on export_road_network_metrics')
-    export_road_network_metrics(country)
-
-    print('Working on export_specific_road_network')
-    export_specific_road_network(country)
-
-    print('Working on process_road_network')
-    process_road_network(country)
-
-    print('Working on process_regional_coverage')
-    process_regional_coverage(country)
+    # print('Working on process_regional_coverage')
+    # process_regional_coverage(country)
 
     print('Working on convert_regional_coverage_to_shapes')
     convert_regional_coverage_to_shapes(country)
@@ -691,257 +676,6 @@ def export_cell_counts(country, regions):
     folder = os.path.join(DATA_PROCESSED, country['iso3'], 'sites')
     path_out = os.path.join(folder, filename)
     output.to_csv(path_out, index=False)
-
-    return
-
-
-def export_regional_road_network_grid(country):
-    """
-    Export regional road network as a grid. 
-
-    """
-    filename = 'regions_2_MEX.shp'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'regions')
-    path_in = os.path.join(folder, filename)
-    regions = gpd.read_file(path_in, crs='epsg:4326')
-    regions = regions.to_dict('records')#[:1]
-
-    filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_RAW, 'osm')
-    path_in = os.path.join(folder, filename)
-    roads = gpd.read_file(path_in, crs='epsg:4326')
-
-    output = []
-
-    for region in regions:
-
-        filename = '{}.shp'.format(region['GID_2'])
-        folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure', 'regions', 'roads')
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        path_out = os.path.join(folder, filename)
-
-        if os.path.exists(path_out):
-            print('Already exists: {}'.format(path_out))
-            continue
-        
-        print('Working on {}'.format(region['GID_2']))
-
-        region_gdf = [{
-            'geometry': region['geometry'],
-            'properties': {}
-        }]
-        region_gdf = gpd.GeoDataFrame().from_features(region_gdf, crs='epsg:4326')
-
-        output = gpd.overlay(roads, region_gdf, how='intersection')
-
-        if len(output) == 0:
-            continue
-
-        output.to_file(path_out, crs='epsg:4326')
-
-    return
-
-
-def export_regional_road_network(country):
-    """
-    Export regional road network. 
-
-    """
-    filename = 'regions_2_MEX.shp'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'regions')
-    path_in = os.path.join(folder, filename)
-    regions = gpd.read_file(path_in, crs='epsg:4326')
-    regions = regions.to_dict('records')#[:1]
-
-    filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_RAW, 'osm')
-    path_in = os.path.join(folder, filename)
-    roads = gpd.read_file(path_in, crs='epsg:4326')
-
-    output = []
-
-    for region in regions:
-
-        filename = '{}.shp'.format(region['GID_2'])
-        folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure', 'regions', 'roads')
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        path_out = os.path.join(folder, filename)
-
-        if os.path.exists(path_out):
-            print('Already exists: {}'.format(path_out))
-            continue
-        
-        print('Working on {}'.format(region['GID_2']))
-
-        region_gdf = [{
-            'geometry': region['geometry'],
-            'properties': {}
-        }]
-        region_gdf = gpd.GeoDataFrame().from_features(region_gdf, crs='epsg:4326')
-
-        output = gpd.overlay(roads, region_gdf, how='intersection')
-
-        if len(output) == 0:
-            continue
-
-        output.to_file(path_out, crs='epsg:4326')
-
-    return
-
-
-def export_road_network_metrics(country):
-    """
-    Export regional metrics. 
-
-    """
-    filename = 'regions_2_MEX.shp'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'regions')
-    path_in = os.path.join(folder, filename)
-    regions = gpd.read_file(path_in, crs='epsg:4326')
-    regions = regions.to_dict('records')#[:1]
-
-    output = []
-
-    for region in regions:
-
-        print('Working on {}'.format(region['GID_2']))
-
-        filename = '{}.shp'.format(region['GID_2'])
-        folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure', 'regions', 'roads')
-        path_in = os.path.join(folder, filename)
-        if not os.path.exists(path_in):
-            continue
-        road_network = gpd.read_file(path_in, crs='epsg:4326')
-        road_network = road_network.to_crs(3857)
-        road_network['length_km'] = road_network['geometry'].length / 1e3
-        road_network = road_network[['fclass','length_km']]
-        road_network = round(road_network.groupby('fclass').sum(),1).reset_index()
-        road_network = dict(road_network.values)
-
-        if 'living_street' in road_network.keys():
-            living_street = road_network['living_street']
-        else:
-            living_street = 0
-
-        if 'primary' in road_network.keys():
-            primary = road_network['primary']
-        else:
-            primary = 0
-
-        if 'residential' in road_network.keys():
-            residential = road_network['residential']
-        else:
-            residential = 0
-
-        if 'secondary' in road_network.keys():
-            secondary = road_network['secondary']
-        else:
-            secondary = 0
-
-        if 'tertiary' in road_network.keys():
-            tertiary = road_network['tertiary']
-        else:
-            tertiary = 0
-
-        if 'trunk' in road_network.keys():
-            trunk = road_network['trunk']
-        else:
-            trunk = 0
-
-        if 'unclassified' in road_network.keys():
-            unclassified = road_network['unclassified']
-        else:
-            unclassified = 0
-
-        output.append({
-            'iso3': country['iso3'],
-            'gid_id': region['GID_2'],
-            'living_street': living_street,
-            'primary': primary,
-            'residential': residential,
-            'secondary': secondary,
-            'tertiary': tertiary,
-            'trunk': trunk,
-            'unclassified': unclassified,
-            'total': living_street + primary + residential + secondary + tertiary + trunk + unclassified
-        })
-
-    output = pd.DataFrame(output)
-
-    filename = 'road_lengths_by_region.csv'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
-    path_out = os.path.join(folder, filename)
-
-    output.to_csv(path_out, index=False)
-
-    return
-
-
-def export_specific_road_network(country):
-    """
-    Export road network. 
-
-    """
-    filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
-    if not os.path.exists(folder):
-        os.mkdir(folder)
-    path_out = os.path.join(folder, filename)
-
-    # if os.path.exists(path_out):
-    #     return print('Already exists: {}'.format(path_out))
-
-    filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_RAW, 'osm')
-    path_in = os.path.join(folder, filename)
-    data = gpd.read_file(path_in, crs='epsg:4326')
-    data = data.to_dict('records')
-
-    output = []
-
-    for item in data:
-        if item['fclass'] in [
-            'motorway',
-            'trunk',
-            'primary'
-        ]:
-            output.append({
-                'geometry': item['geometry'],
-                'properties': {
-                    'osm_id': item['osm_id'],
-                    'fclass': item['fclass'],
-                    'maxspeed': item['maxspeed'],
-                }
-            })
-
-    output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
-
-    output.to_file(path_out, crs='epsg:4326')
-
-    return
-
-
-def process_road_network(country):
-    """
-    Process road network. 
-
-    """
-    filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
-    path_in = os.path.join(folder, filename)
-    data = gpd.read_file(path_in, crs='epsg:4326')
-    data = data.to_crs(3857)
-
-    data['geometry'] = data['geometry'].buffer(2000)
-    data = data.dissolve()
-    data = data.to_crs(4326)
-
-    filename = 'road_network_processed.shp'
-    folder = os.path.join(DATA_PROCESSED, country['iso3'], 'infrastructure')
-    path_out = os.path.join(folder, filename)
-    data.to_file(path_out, crs='epsg:4326')
 
     return
 

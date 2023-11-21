@@ -99,47 +99,48 @@ def manually_create_grid(xmin, ymin, xmax, ymax, length, wide):
     return polygons
 
 
-def combined_with_roads(iso3, side_length):
+def export_specific_road_network(iso3):
     """
-    Combine grid and road network. 
+    Export road network. 
 
     """
-    filename = 'grid_{}_{}_km.shp'.format(side_length, side_length)
-    folder = os.path.join(DATA_PROCESSED, iso3, 'grid')
-    path_in = os.path.join(folder, filename)
-    grid = gpd.read_file(path_in, crs='epsg:4326')
-    grid = grid.to_dict('records')
+    filename = 'road_network_processed.shp'
+    folder = os.path.join(DATA_PROCESSED, iso3, 'infrastructure')
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    path_out = os.path.join(folder, filename)
+
+    # if os.path.exists(path_out):
+    #     return print('Already exists: {}'.format(path_out))
 
     filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_PROCESSED, iso3, 'infrastructure')
+    folder = os.path.join(DATA_RAW, 'osm')
     path_in = os.path.join(folder, filename)
-    roads = gpd.read_file(path_in, crs='epsg:4326')
-    roads = roads.to_dict('records')#[:100]
+    data = gpd.read_file(path_in, crs='epsg:4326')
+    data = data.to_dict('records')
 
     output = []
-    # all_data = gpd.overlay(roads, grid, how='intersection', keep_geom_type=True)
 
-    for item in grid:
-        for road in roads:
-            if item['geometry'].intersects(road['geometry']):
-                output.append({
-                    'geometry': item['geometry'],
-                    'properties':{
-                        'GID_id': item['GID_id'],
-                        # 'GID_id': item['GID_id'],
-                        # 'GID_id': item['GID_id'],
-                        # 'GID_id': item['GID_id'],
-                        # 'GID_id': item['GID_id'],
-                        # 'GID_id': item['GID_id'],
-                    }
-                })
+    for item in data:
+        if item['fclass'] in [
+            'motorway',
+            'primary',
+            'secondary',
+            'tertiary',
+            'trunk',
+        ]:
+            output.append({
+                'geometry': item['geometry'],
+                'properties': {
+                    'osm_id': item['osm_id'],
+                    'fclass': item['fclass'],
+                    'maxspeed': item['maxspeed'],
+                }
+            })
 
     output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
 
-    filename = 'grid_and_roads.shp'
-    folder = os.path.join(DATA_PROCESSED, iso3, 'grid')
-    path_output = os.path.join(folder, filename)
-    output.to_file(path_output, crs="epsg:4326")
+    output.to_file(path_out, crs='epsg:4326')
 
     return
 
@@ -198,9 +199,10 @@ def cut_roads_with_upper_grid(iso3, side_length_upper):
     Cut roads with upper grid. 
 
     """
-    filename = 'gis_osm_roads_free_1.shp'
-    folder = os.path.join(DATA_RAW, 'osm')
-    # folder = os.path.join(DATA_PROCESSED, iso3, 'infrastructure')
+    # filename = 'gis_osm_roads_free_1.shp'
+    # folder = os.path.join(DATA_RAW, 'osm')
+    filename = 'road_network_processed.shp'
+    folder = os.path.join(DATA_PROCESSED, iso3, 'infrastructure')
     path_in = os.path.join(folder, filename)
     roads_all = gpd.read_file(path_in, crs='epsg:4326')
 
@@ -216,8 +218,8 @@ def cut_roads_with_upper_grid(iso3, side_length_upper):
             os.mkdir(folder)
         path_output = os.path.join(folder, filename)
 
-        if os.path.exists(path_output):
-            continue
+        # if os.path.exists(path_output):
+        #     continue
 
         print('--Working on {}'.format(filename))
 
@@ -330,20 +332,15 @@ def export_road_network_metrics(country, side_length_lower):
             subset = round(subset.groupby('fclass').sum(), 1).reset_index()
             subset = dict(subset.values)
 
-            if 'living_street' in subset.keys():
-                living_street = subset['living_street']
+            if 'motorway' in subset.keys():
+                motorway = subset['motorway']
             else:
-                living_street = 0
+                motorway = 0
 
             if 'primary' in subset.keys():
                 primary = subset['primary']
             else:
                 primary = 0
-
-            if 'residential' in subset.keys():
-                residential = subset['residential']
-            else:
-                residential = 0
 
             if 'secondary' in subset.keys():
                 secondary = subset['secondary']
@@ -360,22 +357,15 @@ def export_road_network_metrics(country, side_length_lower):
             else:
                 trunk = 0
 
-            if 'unclassified' in subset.keys():
-                unclassified = subset['unclassified']
-            else:
-                unclassified = 0
-
             output.append({
                 'iso3': iso3,
                 'id_lower': unique_id,
-                'living_street': living_street,
+                'motorway': motorway,
                 'primary': primary,
-                'residential': residential,
                 'secondary': secondary,
                 'tertiary': tertiary,
                 'trunk': trunk,
-                'unclassified': unclassified,
-                'total': living_street + primary + residential + secondary + tertiary + trunk + unclassified
+                'total': motorway + primary + secondary + tertiary + trunk 
             })
 
     output = pd.DataFrame(output)
@@ -401,6 +391,8 @@ if __name__ == "__main__":
         side_length_upper = country[1]
         side_length_lower = country[2]
     
+        export_specific_road_network(iso3)
+
         ##Generate grids
         generate_grid(iso3, side_length_lower) 
         generate_grid(iso3, side_length_lower) 
