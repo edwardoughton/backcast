@@ -10,9 +10,6 @@ In order to generate the results, the following scripts need to be executed:
 
 The final results consist of a back-casted deployment schedule for the roll-out of 2G GSM, 3G UMTS and 4G LTE cellular assets, applied here to Mexico. 
 
-Results are validated against Mexican census data from 2010 and 2020, asking citizens whether they have a cellular subscription or not. 
-
-
 ### Current Contributors
 - Edward Oughton
 - Maria Vagliasindi 
