@@ -35,47 +35,47 @@ def run_preprocessing(country):
     iso3 = country['iso3']
     regional_level = int(country['gid_region'])
 
-    # print('Working on create_national_sites_csv')
-    # create_national_sites_csv(country)
+    print('Working on create_national_sites_csv')
+    create_national_sites_csv(country)
 
-    # print('Working on process_country_shapes')
-    # process_country_shapes(iso3)
+    print('Working on process_country_shapes')
+    process_country_shapes(iso3)
 
-    # print('Working on process_regions')
-    # process_regions(iso3, regional_level)
+    print('Working on process_regions')
+    process_regions(iso3, regional_level)
 
-    # print('Working on create_national_sites_shp')
-    # create_national_sites_shp(iso3)
+    print('Working on create_national_sites_shp')
+    create_national_sites_shp(iso3)
 
-    # regions = get_regions(country, regional_level)
-    # regions = regions.to_dict('records')
+    regions = get_regions(country, regional_level)
+    regions = regions.to_dict('records')
 
-    # print('Working on regional disaggregation')
-    # for region in regions:
+    print('Working on regional disaggregation')
+    for region in regions:
 
-    #     region = region['GID_{}'.format(regional_level)]
+        region = region['GID_{}'.format(regional_level)]
         
-    #     print("working on {}".format(region))
+        print("working on {}".format(region))
 
-    #     gid_1 = get_gid_1(region)
+        gid_1 = get_gid_1(region)
 
-    #     #print('Working on segment_by_gid_1')
-    #     segment_by_gid_1(iso3, 1, gid_1)
+        #print('Working on segment_by_gid_1')
+        segment_by_gid_1(iso3, 1, gid_1)
 
-    #     #print('Working on create_regional_sites_layer')
-    #     create_regional_sites_layer(iso3, 1, gid_1)
+        #print('Working on create_regional_sites_layer')
+        create_regional_sites_layer(iso3, 1, gid_1)
 
-    #     #print('Working on segment_by_gid_2')
-    #     segment_by_gid_2(iso3, 2, region, gid_1)
+        #print('Working on segment_by_gid_2')
+        segment_by_gid_2(iso3, 2, region, gid_1)
 
-    #     #print('Working on create_regional_sites_layer')
-    #     create_regional_sites_layer(iso3, 2, region)
+        #print('Working on create_regional_sites_layer')
+        create_regional_sites_layer(iso3, 2, region)
 
-    # print('Exporting cell counts by region')
-    # export_cell_counts(country, regions)
+    print('Exporting cell counts by region')
+    export_cell_counts(country, regions)
 
-    # print('Working on process_regional_coverage')
-    # process_regional_coverage(country)
+    print('Working on process_regional_coverage')
+    process_regional_coverage(country)
 
     print('Working on convert_regional_coverage_to_shapes')
     convert_regional_coverage_to_shapes(country)
@@ -683,7 +683,7 @@ def export_cell_counts(country, regions):
 def process_regional_coverage(country):
     """
     Cut coverage by region. 
-
+    
     """
     level = 2
     iso3 = country['iso3']

@@ -52,6 +52,8 @@ def load_data(country):
     seen = set()
 
     for pop_item in population_data:
+        # if not pop_item['id_lower'] == '-100.01100364962068_16.910656703520466':
+        #     continue
         for road_item in road_data:
             if pop_item['id_lower'] == road_item['id_lower']:
                 output.append({
@@ -71,9 +73,11 @@ def load_data(country):
                         'total': road_item['total'], 
                     }
                 })
-                seen.add(pop_item['id_upper'])
+                seen.add(pop_item['id_lower'])
 
     for pop_item in population_data:
+        # if not pop_item['id_lower'] == '-100.01100364962068_16.910656703520466':
+        #     continue
         if pop_item['id_lower'] not in list(seen):
             output.append({
                 'geometry': pop_item['geometry'],
@@ -127,12 +131,48 @@ def start_year(radio):
     
     """
     if radio == 'gsm':
-        return 2000, 2014 
+        return 1996, 2014 
     elif radio == 'umts':
-        return 2008, 2016
+        return 2008, 2018
     elif radio == 'lte':
         return 2013, 2022
 
+
+def spending_proportion(year):
+    """
+    Get the radio generation built type.
+    
+    """
+    lut = {
+        1996: 100,
+        1997: 100,
+        1998: 100,
+        1999: 100,
+        2000: 100,
+        2001: 100,
+        2002: 100,
+        2003: 100,
+        2004: 100,
+        2005: 100,
+        2006: 100,
+        2007: 100,
+        2008: 50,
+        2009: 50,
+        2010: 50,
+        2011: 50,
+        2012: 50,
+        2013: 50,
+        2014: 50,
+        2015: 50,
+        2016: 50,
+        2017: 50,
+        2018: 100,
+        2019: 100,
+        2020: 100,
+    }
+
+    return lut[year]
+    
 
 def generate_tile_backcast(country):
     """
@@ -143,6 +183,7 @@ def generate_tile_backcast(country):
     folder_in = os.path.join(DATA_PROCESSED, country['iso3'])
     path_in = os.path.join(folder_in, filename)
     pop_lut = gpd.read_file(path_in, crs='epsg:4326')#[:5]
+    # pop_lut = pop_lut.sort_values(by=['population'], ascending=False)[:1]
 
     pop_lut['attractiveness'] =  round(
         pop_lut['pop_km2'] + 
@@ -155,49 +196,40 @@ def generate_tile_backcast(country):
 
     pop_lut = sorted(pop_lut, key=lambda d: d['attractiveness'], reverse=True)#[:1] 
 
-    cash_to_spend = { #1e8 # $100,000,000/year
-        2000: 1e7, 
-        2001: 1e7,
-        2002: 1e7,
-        2003: 1e7,
-        2004: 1e8,
-        2005: 1e8,
-        2006: 1e8,
-        2007: 1e8, 
-        2008: 1e8,
-        2009: 1e8,
-        2010: 1e8,
-        2011: 1e8,
-        2012: 1e8,
-        2013: 1e8,
-        2014: 1e8,
-        2015: 1e8,
-        2016: 1e8,
-        2017: 1e8,
-        2018: 1e8,
-        2019: 1e8,
-        2020: 1e8,
-        2021: 1e8,
-    }
-    cost_per_site = 100000
-    pop_per_site = 10000
+    path_in = os.path.join(DATA_PROCESSED, '..', 'raw','cash_to_spend.csv')
+    cash_to_spend_data = pd.read_csv(path_in)#[:5]
+    cash_to_spend_data = cash_to_spend_data.to_dict('records')
+
+    cash_to_spend = {}
+
+    for item in cash_to_spend_data:
+        cash_to_spend[item['year']] = item['cash_to_spend']
+
+    cost_per_site = 150000
+    pop_per_site = 5000
     market_share = 0.25
 
-    for radio in ['gsm']:#,'umts','lte']:
+    for radio in ['gsm','umts','lte']:
 
         output = []
         built = set()
         start, end = start_year(radio)
 
-        for year in range (start, end):
+        for year in range(start, end+5):
+
+            if year == 2021:
+                break 
 
             spent = 0
+            spending_factor = spending_proportion(year)
+
+            to_spend = cash_to_spend[year] * (spending_factor/100)
 
             for tile in pop_lut:
-        
-                users = tile['population'] * market_share
 
-                if tile['attractiveness'] == 0:
+                users = math.floor(tile['population'] * market_share)
+
+                if tile['attractiveness'] == 0 and not tile['id_lower'] in built:
                     output.append({
                         'geometry': tile['geometry'],
                         'properties': {
@@ -221,12 +253,12 @@ def generate_tile_backcast(country):
                             'attractiveness': tile['attractiveness'],
                         }
                     })
+                    built.add(tile['id_lower'])
                     continue
         
                 if not tile['id_lower'] in built:
-                    if spent < cash_to_spend[year]:
-
-                        if tile['pop_km2'] < 100 and tile['motorway'] == 0 or tile['attractiveness'] == 0:
+                    if spent < to_spend:
+                        if tile['pop_km2'] < 50 and tile['motorway'] == 0 or tile['attractiveness'] == 0:
                             output.append({
                                 'geometry': tile['geometry'],
                                 'properties': {
@@ -250,13 +282,11 @@ def generate_tile_backcast(country):
                                     'attractiveness': tile['attractiveness'],
                                 }
                             })
+                            built.add(tile['id_lower'])
                             continue
 
                         cells_to_build = math.ceil(users / pop_per_site)
                         cost = cells_to_build * cost_per_site
-
-                        # if cost < 100000:
-                        #     cost = 100000
 
                         output.append({
                             'geometry': tile['geometry'],
@@ -284,31 +314,7 @@ def generate_tile_backcast(country):
 
                         built.add(tile['id_lower'])
                         spent += cost
-                    else:
-                        output.append({
-                            'geometry': tile['geometry'],
-                            'properties': {
-                                'year': 'NA',
-                                'id_lower': tile['id_lower'],
-                                'id_upper': tile['id_upper'],
-                                'population': tile['population'],
-                                'area_km2': tile['area_km2'],
-                                'pop_km2': tile['pop_km2'],
-                                'users': users,
-                                'cells_to_build': 0,
-                                'radio': 'NA',
-                                'cost': 0,
-                                'population_served': 0,
-                                'motorway': tile['motorway'], 
-                                'primary': tile['primary'], 
-                                'secondary': tile['secondary'], 
-                                'tertiary': tile['tertiary'], 
-                                'trunk': tile['trunk'], 
-                                'total': tile['total'], 
-                                'attractiveness': tile['attractiveness'],
-                            }
-                        })
-                                                    
+
         output = gpd.GeoDataFrame.from_features(output, crs='epsg:4326')
 
         filename = '{}_tiles.shp'.format(radio)
@@ -318,33 +324,41 @@ def generate_tile_backcast(country):
         path_output = os.path.join(folder_out, filename)
         output.to_file(path_output, crs='epsg:4326')
 
+        filename = '{}.csv'.format(radio)
+        folder_out = os.path.join(RESULTS, country['iso3'], 'by_radio')
+        path_output = os.path.join(folder_out, filename)
+        # output = output[output['year'] != 'NA']
+        # output['gid_id'] = 'MEX'
+        output = output[['id_lower','year','radio','population','users', 'attractiveness','cells_to_build']]
+        output.to_csv(path_output, index=False)
+
     return
 
 
-# def aggregate_results(country):
-#     """
-#     Aggregate the radio generation results to the region level.
+def aggregate_results(country):
+    """
+    Aggregate the radio generation results to the region level.
 
-#     """
-#     output = []
+    """
+    output = []
 
-#     for radio in ['gsm']:#,'umts','lte']:
+    for radio in ['gsm','umts','lte']:
 
-#         filename = '{}_tiles.csv'.format(radio)
-#         folder_in = os.path.join(RESULTS, country['iso3'], 'by_radio')
-#         path_in = os.path.join(folder_in, filename)
-#         data = pd.read_csv(path_in)
-#         data = data.to_dict('records')
-#         output = output + data
+        filename = '{}.csv'.format(radio)
+        folder_in = os.path.join(RESULTS, country['iso3'], 'by_radio')
+        path_in = os.path.join(folder_in, filename)
+        data = pd.read_csv(path_in)
+        data = data.to_dict('records')
+        output = output + data
 
-#     output = pd.DataFrame(output)
+    output = pd.DataFrame(output)
 
-#     filename = 'results.csv'
-#     folder_out = os.path.join(RESULTS, country['iso3'])
-#     path_output = os.path.join(folder_out, filename)
-#     output.to_csv(path_output, index=False)
+    filename = 'results.csv'
+    folder_out = os.path.join(RESULTS, country['iso3'])
+    path_output = os.path.join(folder_out, filename)
+    output.to_csv(path_output, index=False)
 
-#     return
+    return
 
 
 def plot_map(country):
@@ -416,81 +430,6 @@ def plot_map(country):
         plt.close(fig)
 
 
-def multiplot_tile_deployment(iso3):
-    """
-    Plot cells. 
-
-    """
-    filename = 'gsm_tiles.shp'
-    folder = os.path.join(BASE_PATH, '..', 'results', iso3, 'radio')
-    path = os.path.join(folder, filename)
-    gsm = gpd.read_file(path, crs='epsg:4326')
-
-    filename = 'umts_tiles.shp'
-    folder = os.path.join(BASE_PATH, '..', 'results', iso3, 'radio')
-    path = os.path.join(folder, filename)
-    umts = gpd.read_file(path, crs='epsg:4326')
-
-    filename = 'lte_tiles.shp'
-    folder = os.path.join(BASE_PATH, '..', 'results', iso3, 'radio')
-    path = os.path.join(folder, filename)
-    lte = gpd.read_file(path, crs='epsg:4326')
-
-    plt.rcParams["font.family"] = "Times New Roman"
-    fig, (ax1, ax2) = plt.subplots(2, 2, figsize=(11,8))
-    fig.subplots_adjust(hspace=.3, wspace=.1)
-    fig.set_facecolor('gainsboro')
-
-    #### start adapting from here
-    ####
-    ####
-    ####
-    for ax in [ax1, ax2]:
-        for dim in [0,1]:
-            data_subset.plot(ax=ax[dim], facecolor="none", edgecolor='lightgrey', linewidth=0.1)
-            # ctx.add_basemap(ax[dim], crs=shapes_subset.crs, source=ctx.providers.CartoDB.Voyager)
-
-    options = [
-        ('gsm', ax1[0]),
-        ('umts', ax1[1]),
-        ('lte', ax2[0]),
-        ('nr', ax2[1])
-    ]
-
-    for my_file in options:
-        
-        shapes_to_plot = shapes_subset[shapes_subset['radio'] == my_file[0]]
-
-        if len(shapes_to_plot) > 0:
-            shapes_to_plot.plot(
-                column='cells_to_build', 
-                color='red',
-                linewidth=0.01, 
-                alpha=.5,
-                legend=True, 
-                edgecolor='grey', 
-                ax=my_file[1]
-            )
-            
-    ax1[0].set_title('2G GSM', fontname='Times New Roman')
-    ax1[1].set_title('3G UMTS', fontname='Times New Roman')
-    ax2[0].set_title('4G LTE', fontname='Times New Roman')
-    ax2[1].set_title('5G NR', fontname='Times New Roman')
-
-    main_title = 'Backcasting cellular deployment in Mexico: {}'.format(str(year))
-    plt.suptitle(main_title, fontsize=20, y=.98)
-
-    fig.tight_layout()
-    
-    filename = '{}.png'.format(str(year))
-    fig.savefig(os.path.join(VIS, filename))
-
-    plt.close(fig)
-
-    data_subset = data_subset.to_dict('records')
-
-    return
-
 
 if __name__ == "__main__":
 
@@ -502,14 +441,12 @@ if __name__ == "__main__":
     # print('Running load_data')
     # data = load_data(country)
 
-    # print('Generating tile backcast results')
-    # generate_tile_backcast(country)
+    print('Generating tile backcast results')
+    generate_tile_backcast(country)
 
-    # print('Aggregating results')
-    # aggregate_results(country)
+    print('Aggregating results')
+    aggregate_results(country)
 
     print("Working on plot_map")
     plot_map(country)
 
-    # print('Working on multiplot_tile_deployment')
-    # multiplot_tile_deployment(country['iso3'])
